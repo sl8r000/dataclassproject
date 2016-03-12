@@ -13,9 +13,9 @@ def _solution_length(solution):
         return
 
 def time_limit_filter(df, millisecond_limit):
-    start = df['completedDate'].min()
+    start = df['completedDate'].map(int).min()
     middle = start + millisecond_limit
-    end = df['completedDate'].max()
+    end = df['completedDate'].map(int).max()
 
     before_cutoff = df[(df['completedDate'] >= start) & (df['completedDate'] <= middle)]
     after_cutoff = df[(df['completedDate'] > middle) & (df['completedDate'] <= end)]
@@ -26,26 +26,36 @@ def feature_extractor(df):
     df = df.copy(deep=True)
     feature_dict = {}
 
+    if 'solution' not in df.columns:
+        df['solution'] = -1
+    df['solution'].fillna(-1, inplace=True)
+    if 'name' not in df.columns:
+        df['name'] = ''
+    df['name'].fillna('', inplace=True)
+
+
     feature_dict['num_exercises'] = len(df)
     feature_dict['num_distinct_exercises'] = len(df['name'].unique())
     feature_dict['num_active_days'] = len(df['completedDate'].map(lambda x: datetime.datetime.fromtimestamp(x/1000).date()).unique())
     feature_dict['num_distinct_modules'] = len(df['name'].map(lambda x: x[:x.find(':')]).unique())
-    feature_dict['num_codepen_uses'] = len(df['solution'].map(lambda x: 0 if x is None or type(x) == float else x.startswith('https://codepen.io')).unique())
+    # feature_dict['num_codepen_uses'] = len(df['solution'].map(lambda x: 0 if x is None or type(x) == float else x.startswith('https://codepen.io')).unique())
 
     solution_lengths = df['solution'].map(_solution_length)
     feature_dict['min_solution_length'] = solution_lengths.min()
     feature_dict['max_solution_length'] = solution_lengths.max()
     feature_dict['avg_solution_length'] = solution_lengths.mean()
-    feature_dict['med_solution_length'] = np.median(solution_lengths)
+    # feature_dict['med_solution_length'] = np.median(solution_lengths)
     feature_dict['std_solution_length'] = solution_lengths.std()
     feature_dict['num_empty_solutions'] = (solution_lengths == 0).sum()
     feature_dict['num_unsolved'] = (solution_lengths == -1).sum()
 
     time_splits = np.diff(df['completedDate'])
+    if len(time_splits) == 0:
+        time_splits = np.array([-1])
     feature_dict['min_sec_between_solutions'] = time_splits.min()
     feature_dict['max_sec_between_solutions'] = time_splits.max()
     feature_dict['avg_sec_between_solutions'] = time_splits.mean()
-    feature_dict['med_sec_between_solutions'] = np.median(time_splits)
+    # feature_dict['med_sec_between_solutions'] = np.median(time_splits)
     feature_dict['std_sec_between_solutions'] = time_splits.std()
 
     return feature_dict
@@ -59,7 +69,17 @@ def readline(line_string):
     return pd.DataFrame(exercises)
 
 if __name__ == '__main__':
-    with open('sample_line.txt') as stream:
+    user_data = []
+    with open('output.json') as stream:
         for line in stream:
+            line = line.strip()
+            if line == '[' or line == ']':
+                continue
             df = readline(line)
             before, after = time_limit_filter(df, 1000*60*60*24*7)
+	    before = feature_extractor(before)
+            before['after_days'] = len(after)
+            user_data.append(before)
+            print len(user_data)/100000.0
+
+    user_data = pd.DataFrame(user_data)
